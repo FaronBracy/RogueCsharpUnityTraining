@@ -1,0 +1,2 @@
+# RogueCsharpUnityTraining
+比较纯粹的RoguelikeGame练习，使用RogueCsharp库，和PhiOS插件。
