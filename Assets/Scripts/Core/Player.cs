@@ -84,21 +84,21 @@ public class Player : Actor
         var texts = Game.PlayerStat.GetComponentsInChildren<Text>();
         foreach (var text in texts)
         {
-            switch (text.text)
+            switch (text.gameObject.name)
             {
-                case "Name:":
+                case "name":
                     text.text = String.Format("Name:      {0}", Name);
                     break;
-                case "Health:":
+                case "health":
                     text.text = String.Format("Health:     {0}/{1}", Health, MaxHealth);
                     break;
-                case "Attack:":
+                case "attack":
                     text.text = String.Format("Attack:      {0}/({1})%", Attack, AttackChance);
                     break;
-                case "Defense:":
+                case "defense":
                     text.text = String.Format("Defense:  {0}/({1})%", Defense, DefenseChance);
                     break;
-                case "Gold:":
+                case "gold":
                     text.text = String.Format("Gold:          {0}", Gold);
                     break;
 
