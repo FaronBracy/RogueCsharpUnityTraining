@@ -1,6 +1,6 @@
-﻿
-using System;
-using System.Text;
+﻿using System.Text;
+
+using RogueSharp;
 using RogueSharp.DiceNotation;
 using UnityEngine;
 
@@ -10,29 +10,33 @@ public class CommandSystem
 
     public bool MovePlayer(Direction direction)
     {
-        int x = Game.Player.X;
-        int y = Game.Player.Y;
+        int x;
+        int y;
 
         switch (direction)
         {
             case Direction.Up:
             {
+                x = Game.Player.X;
                 y = Game.Player.Y - 1;
                 break;
             }
             case Direction.Down:
             {
+                x = Game.Player.X;
                 y = Game.Player.Y + 1;
                 break;
             }
             case Direction.Left:
             {
                 x = Game.Player.X - 1;
+                y = Game.Player.Y;
                 break;
             }
             case Direction.Right:
             {
                 x = Game.Player.X + 1;
+                y = Game.Player.Y;
                 break;
             }
             default:
@@ -57,6 +61,39 @@ public class CommandSystem
         return false;
     }
 
+    public void ActivateMonsters()
+    {
+        IScheduleable scheduleable = Game.SchedulingSystem.Get();
+        if ( scheduleable is Player )
+        {
+        IsPlayerTurn = true;
+        Game.SchedulingSystem.Add( Game.Player );
+        }
+        else
+        {
+        Monster monster = scheduleable as Monster;
+
+        if ( monster != null )
+        {
+            monster.PerformAction( this );
+            Game.SchedulingSystem.Add( monster );
+        }
+
+        ActivateMonsters();
+        }
+    }
+
+    public void MoveMonster( Monster monster, RogueSharp.Cell cell )
+    {
+        if ( !Game.DungeonMap.SetActorPosition( monster, cell.X, cell.Y ) )
+        {
+        if ( Game.Player.X == cell.X && Game.Player.Y == cell.Y )
+        {
+            Attack( monster, Game.Player );
+        }
+        }
+    }
+
     public void Attack(Actor attacker, Actor defender)
     {
         StringBuilder attackMessage = new StringBuilder();
@@ -77,127 +114,175 @@ public class CommandSystem
         ResolveDamage(defender, damage);
     }
 
-    private static int ResolveAttack(Actor attacker, Actor defender, StringBuilder attackMessage)
+    private static int ResolveAttack( Actor attacker, Actor defender, StringBuilder attackMessage )
     {
         int hits = 0;
 
-        attackMessage.AppendFormat("{0} attacks {1} and rolls: ", attacker.Name, defender.Name);
+        attackMessage.AppendFormat( "{0} attacks {1} and rolls: ", attacker.Name, defender.Name );
+        DiceExpression attackDice = new DiceExpression().Dice( attacker.Attack, 100 );
 
-        DiceExpression attackDice = new DiceExpression().Dice(attacker.Attack, 100);
         DiceResult attackResult = attackDice.Roll();
-
-        foreach (TermResult termResult in attackResult.Results)
+        foreach ( TermResult termResult in attackResult.Results )
         {
-            attackMessage.Append(termResult.Value + ", ");
-            if (termResult.Value >= 100 - attacker.AttackChance)
-            {
-                hits++;
-            }
+        attackMessage.Append( termResult.Value + ", " );
+        if ( termResult.Value >= 100 - attacker.AttackChance )
+        {
+            hits++;
+        }
         }
 
         return hits;
     }
 
-    private static int ResolveDefense(Actor defender, int hits, StringBuilder attackMessage, StringBuilder defenseMessage)
+    private static int ResolveDefense( Actor defender, int hits, StringBuilder attackMessage, StringBuilder defenseMessage )
     {
         int blocks = 0;
 
-        if (hits > 0)
+        if ( hits > 0 )
         {
-            attackMessage.AppendFormat("scoring {0} hits.", hits);
-            defenseMessage.AppendFormat("  {0} defends and rolls: ", defender.Name);
+        attackMessage.AppendFormat( "scoring {0} hits.", hits );
+        defenseMessage.AppendFormat( "  {0} defends and rolls: ", defender.Name );
+        DiceExpression defenseDice = new DiceExpression().Dice( defender.Defense, 100 );
 
-            DiceExpression defenseDice = new DiceExpression().Dice(defender.Defense, 100);
-            DiceResult defenseRoll = defenseDice.Roll();
-
-            foreach (TermResult termResult in defenseRoll.Results)
+        DiceResult defenseRoll = defenseDice.Roll();
+        foreach ( TermResult termResult in defenseRoll.Results )
+        {
+            defenseMessage.Append( termResult.Value + ", " );
+            if ( termResult.Value >= 100 - defender.DefenseChance )
             {
-                defenseMessage.Append(termResult.Value + ", ");
-                if (termResult.Value >= 100 - defender.DefenseChance)
-                {
-                    blocks++;
-                }
+                blocks++;
             }
-            defenseMessage.AppendFormat("resulting in {0} blocks.", blocks);
+        }
+        defenseMessage.AppendFormat( "resulting in {0} blocks.", blocks );
         }
         else
         {
-            attackMessage.Append("and misses completely.");
+        attackMessage.Append( "and misses completely." );
         }
 
         return blocks;
     }
 
-    private static void ResolveDamage(Actor defender, int damage)
+    private static void ResolveDamage( Actor defender, int damage )
     {
-        if (damage > 0)
+        if ( damage > 0 )
         {
-            defender.Health = defender.Health - damage;
+        defender.Health = defender.Health - damage;
 
-            Game.MessageLog.Add(String.Format("  {0} was hit for {1} damage", defender.Name, damage));
+        Game.MessageLog.Add( string.Format("  {0} was hit for {1} damage", defender.Name, damage));
 
-            if (defender.Health <= 0)
-            {
-                ResolveDeath(defender);
-            }
+        if ( defender.Health <= 0 )
+        {
+            ResolveDeath( defender );
+        }
         }
         else
         {
-            Game.MessageLog.Add(String.Format("  {0} blocked all damage", defender.Name));
+        Game.MessageLog.Add( string.Format("  {0} blocked all damage", defender.Name));
         }
     }
 
-    private static void ResolveDeath(Actor defender)
+    private static void ResolveDeath( Actor defender )
     {
-        if (defender is Player)
+        if ( defender is Player )
         {
-            Game.MessageLog.Add(String.Format("  {0} was killed, GAME OVER MAN!", defender.Name));
+        Game.MessageLog.Add( string.Format("  {0} was killed, GAME OVER MAN!", defender.Name));
         }
-        else if (defender is Monster)
+        else if ( defender is Monster )
         {
-            Game.DungeonMap.RemoveMonster((Monster)defender);
+        if ( defender.Head != null && defender.Head != HeadEquipment.None() )
+        {
+            Game.DungeonMap.AddTreasure( defender.X, defender.Y, defender.Head );
+        }
+        if ( defender.Body != null && defender.Body != BodyEquipment.None() )
+        {
+            Game.DungeonMap.AddTreasure( defender.X, defender.Y, defender.Body );
+        }
+        if ( defender.Hand != null && defender.Hand != HandEquipment.None() )
+        {
+            Game.DungeonMap.AddTreasure( defender.X, defender.Y, defender.Hand );
+        }
+        if ( defender.Feet != null && defender.Feet != FeetEquipment.None() )
+        {
+            Game.DungeonMap.AddTreasure( defender.X, defender.Y, defender.Feet );
+        }
+        Game.DungeonMap.AddGold( defender.X, defender.Y, defender.Gold );
+        Game.DungeonMap.RemoveMonster( (Monster) defender );
 
-            Game.MessageLog.Add(String.Format("  {0} died and dropped {1} gold", defender.Name, defender.Gold));
+        Game.MessageLog.Add( string.Format("  {0} died and dropped {1} gold", defender.Name, defender.Gold));
         }
     }
 
-    public void ActivateMonsters()
+    public bool HandleKey(KeyCode key )
     {
-        IScheduleable scheduleable = Game.SchedulingSystem.Get();
-        if (scheduleable is Player)
+        if ( key == KeyCode.Q )
         {
-            IsPlayerTurn = true;
-            Game.SchedulingSystem.Add(Game.Player);
+        return Game.Player.QAbility.Perform();
         }
-        else
+        if ( key == KeyCode.W )
         {
-            Monster monster = scheduleable as Monster;
-
-            if (monster != null)
-            {
-                monster.PerformAction(this);
-                Game.SchedulingSystem.Add(monster);
-            }
-
-            ActivateMonsters();
+        return Game.Player.WAbility.Perform();
         }
+        if ( key == KeyCode.E )
+        {
+        return Game.Player.EAbility.Perform();
+        }
+        if ( key == KeyCode.R )
+        {
+        return Game.Player.RAbility.Perform();
+        }
+
+
+        bool didUseItem = false;
+        if ( key == KeyCode.Alpha1)
+        {
+        didUseItem = Game.Player.Item1.Use();
+        }
+        else if ( key == KeyCode.Alpha2)
+        {
+        didUseItem = Game.Player.Item2.Use();
+        }
+        else if ( key == KeyCode.Alpha3)
+        {
+        didUseItem = Game.Player.Item3.Use();
+        }
+        else if ( key == KeyCode.Alpha4)
+        {
+        didUseItem = Game.Player.Item4.Use();
+        }
+
+        if ( didUseItem )
+        {
+        RemoveItemsWithNoRemainingUses();
+        }
+
+        return didUseItem;
     }
 
-    public void MoveMonster(Monster monster, RogueSharp.Cell cell)
+    private static void RemoveItemsWithNoRemainingUses()
     {
-        if (!Game.DungeonMap.SetActorPosition(monster, cell.X, cell.Y))
+        if ( Game.Player.Item1.RemainingUses <= 0 )
         {
-            if (Game.Player.X == cell.X && Game.Player.Y == cell.Y)
-            {
-                Attack(monster, Game.Player);
-            }
+        Game.Player.Item1 = new NoItem();
+        }
+        if ( Game.Player.Item2.RemainingUses <= 0 )
+        {
+        Game.Player.Item2 = new NoItem();
+        }
+        if ( Game.Player.Item3.RemainingUses <= 0 )
+        {
+        Game.Player.Item3 = new NoItem();
+        }
+        if ( Game.Player.Item4.RemainingUses <= 0 )
+        {
+        Game.Player.Item4 = new NoItem();
         }
     }
 
     public void EndPlayerTurn()
     {
         IsPlayerTurn = false;
+        Game.Player.Tick();
     }
-
 }
 

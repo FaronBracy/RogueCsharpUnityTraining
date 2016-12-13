@@ -1,5 +1,4 @@
-﻿
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 public class SchedulingSystem
@@ -13,36 +12,35 @@ public class SchedulingSystem
         _scheduleables = new SortedDictionary<int, List<IScheduleable>>();
     }
 
-    public void Add(IScheduleable scheduleable)
+    public void Add( IScheduleable actor )
     {
-        int key = _time + scheduleable.Time;
-        if (!_scheduleables.ContainsKey(key))
+        int key = _time + actor.Time;
+        if ( !_scheduleables.ContainsKey( key ) )
         {
-            _scheduleables.Add(key, new List<IScheduleable>());
+        _scheduleables.Add( key, new List<IScheduleable>() );
         }
-        _scheduleables[key].Add(scheduleable);
+        _scheduleables[key].Add( actor );
     }
 
-    public void Remove(IScheduleable scheduleable)
+    public void Remove( IScheduleable scheduleable )
     {
-        KeyValuePair<int, List<IScheduleable>> scheduleableListFound
-          = new KeyValuePair<int, List<IScheduleable>>(-1, null);
+        KeyValuePair<int, List<IScheduleable>> scheduleableListFound = new KeyValuePair<int, List<IScheduleable>>( -1, null );
 
-        foreach (var scheduleablesList in _scheduleables)
+        foreach ( var scheduleablesList in _scheduleables )
         {
-            if (scheduleablesList.Value.Contains(scheduleable))
-            {
-                scheduleableListFound = scheduleablesList;
-                break;
-            }
+        if ( scheduleablesList.Value.Contains( scheduleable ) )
+        {
+            scheduleableListFound = scheduleablesList;
+            break;
         }
-        if (scheduleableListFound.Value != null)
+        }
+        if ( scheduleableListFound.Value != null )
         {
-            scheduleableListFound.Value.Remove(scheduleable);
-            if (scheduleableListFound.Value.Count <= 0)
-            {
-                _scheduleables.Remove(scheduleableListFound.Key);
-            }
+        scheduleableListFound.Value.Remove( scheduleable );
+        if ( scheduleableListFound.Value.Count <= 0 )
+        {
+            _scheduleables.Remove( scheduleableListFound.Key );
+        }
         }
     }
 
@@ -50,7 +48,7 @@ public class SchedulingSystem
     {
         var firstScheduleableGroup = _scheduleables.First();
         var firstScheduleable = firstScheduleableGroup.Value.First();
-        Remove(firstScheduleable);
+        Remove( firstScheduleable );
         _time = firstScheduleableGroup.Key;
         return firstScheduleable;
     }
@@ -65,6 +63,5 @@ public class SchedulingSystem
         _time = 0;
         _scheduleables.Clear();
     }
-
 }
 

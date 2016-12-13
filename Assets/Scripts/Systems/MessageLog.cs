@@ -1,16 +1,13 @@
-﻿
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine.UI;
 
 public class MessageLog
 {
+    private readonly Queue<string> _lines;
     private StringBuilder str;
     private static Text text;
-    int count;
-
-    private static readonly int _maxLines = 6;
-    private readonly Queue<string> _lines;
 
     public MessageLog()
     {
@@ -19,24 +16,23 @@ public class MessageLog
         text = Game.text;
     }
 
-    public void Add(string messate)
+    public void Add(string message)
     {
-        _lines.Enqueue(messate);
-        if (_lines.Count > _maxLines)
+        _lines.Enqueue(message);
+        if (_lines.Count > 9)
+        {
             _lines.Dequeue();
+        }
     }
 
-    // Draw each line of the MessageLog queue to the console
     public void Draw()
     {
         str.Length = 0;
         string[] lines = _lines.ToArray();
-        for (int i = 0; i < lines.Length; i++)
+        for (int i = 0; i < lines.Count(); i++)
         {
             str.Append(lines[i] + "\n");
         }
         text.text = str.ToString();
-
     }
 }
-

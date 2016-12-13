@@ -1,5 +1,5 @@
-﻿
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using RogueSharp;
 using RogueSharp.DiceNotation;
@@ -12,58 +12,60 @@ public class MapGenerator
     private readonly int _maxRooms;
     private readonly int _roomMaxSize;
     private readonly int _roomMinSize;
-
+    private readonly int _level;
     private readonly DungeonMap _map;
+    private readonly EquipmentGenerator _equipmentGenerator;
 
-    public MapGenerator(int width, int height,int maxRooms, int roomMaxSize, int roomMinSize)
+    public MapGenerator( int width, int height, int maxRooms, int roomMaxSize, int roomMinSize, int level )
     {
         _width = width;
         _height = height;
         _maxRooms = maxRooms;
         _roomMaxSize = roomMaxSize;
         _roomMinSize = roomMinSize;
+        _level = level;
         _map = new DungeonMap();
+        _equipmentGenerator = new EquipmentGenerator( level );
     }
 
     public DungeonMap CreateMap()
     {
+        Clean();
         _map.Initialize(_width, _height);
 
         for (int r = 0; r < _maxRooms; r++)
         {
-            // Determine a the size and position of the room randomly
             int roomWidth = Game.Random.Next(_roomMinSize, _roomMaxSize);
             int roomHeight = Game.Random.Next(_roomMinSize, _roomMaxSize);
             int roomXPosition = Game.Random.Next(0, _width - roomWidth - 1);
             int roomYPosition = Game.Random.Next(0, _height - roomHeight - 1);
 
-            // All of our rooms can be represented as Rectangles
             var newRoom = new Rectangle(roomXPosition, roomYPosition, roomWidth, roomHeight);
-
-            // Check to see if the room rectangle intersects with any other rooms
             bool newRoomIntersects = _map.Rooms.Any(room => newRoom.Intersects(room));
-            // As long as it doesn't intersect add it to the list of rooms. Otherwise throw it out
             if (!newRoomIntersects)
             {
                 _map.Rooms.Add(newRoom);
             }
         }
 
+        foreach (Rectangle room in _map.Rooms)
+        {
+            CreateMap(room);
+        }
+
         for (int r = 0; r < _map.Rooms.Count; r++)
         {
-            // Don't do anything with the first room
             if (r == 0)
             {
                 continue;
             }
-            // For all remaing rooms get the center of the room and the previous room
+
             int previousRoomCenterX = _map.Rooms[r - 1].Center.X;
             int previousRoomCenterY = _map.Rooms[r - 1].Center.Y;
             int currentRoomCenterX = _map.Rooms[r].Center.X;
             int currentRoomCenterY = _map.Rooms[r].Center.Y;
 
-            // Give a 50/50 chance of which 'L' shaped connecting cooridors to make
-            if (Game.Random.Next(1, 2) == 1)
+            if (Game.Random.Next(0, 2) == 0)
             {
                 CreateHorizontalTunnel(previousRoomCenterX, currentRoomCenterX, previousRoomCenterY);
                 CreateVerticalTunnel(previousRoomCenterY, currentRoomCenterY, currentRoomCenterX);
@@ -77,84 +79,229 @@ public class MapGenerator
 
         foreach (Rectangle room in _map.Rooms)
         {
-            CreateRoom(room);
+            CreateDoors(room);
         }
+
+        CreateStairs();
 
         PlacePlayer();
 
         PlaceMonsters();
+
+        PlaceEquipment();
+
+        PlaceItems();
+
+        PlaceAbility();
+
         return _map;
     }
 
-    private void CreateRoom(Rectangle room)
+    private void CreateMap( Rectangle room )
     {
-        for (int x = room.Left + 1; x < room.Right; x++)
+        for ( int x = room.Left + 1; x < room.Right; x++ )
         {
-            for (int y = room.Top + 1; y < room.Bottom; y++)
+        for ( int y = room.Top + 1; y < room.Bottom; y++ )
+        {
+            _map.SetCellProperties( x, y, true, true );
+        }
+        }
+    }
+
+    private void CreateHorizontalTunnel( int xStart, int xEnd, int yPosition )
+    {
+        for ( int x = Math.Min( xStart, xEnd ); x <= Math.Max( xStart, xEnd ); x++ )
+        {
+        _map.SetCellProperties( x, yPosition, true, true );
+        }
+    }
+
+    private void CreateVerticalTunnel( int yStart, int yEnd, int xPosition )
+    {
+        for ( int y = Math.Min( yStart, yEnd ); y <= Math.Max( yStart, yEnd ); y++ )
+        {
+        _map.SetCellProperties( xPosition, y, true, true );
+        }
+    }
+
+    private void CreateDoors( Rectangle room )
+    {
+        int xMin = room.Left;
+        int xMax = room.Right;
+        int yMin = room.Top;
+        int yMax = room.Bottom;
+
+        List<RogueSharp.Cell> borderCells = _map.GetCellsAlongLine( xMin, yMin, xMax, yMin ).ToList();
+        borderCells.AddRange( _map.GetCellsAlongLine( xMin, yMin, xMin, yMax ) );
+        borderCells.AddRange( _map.GetCellsAlongLine( xMin, yMax, xMax, yMax ) );
+        borderCells.AddRange( _map.GetCellsAlongLine( xMax, yMin, xMax, yMax ) );
+
+        foreach (RogueSharp.Cell cell in borderCells )
+        {
+        if ( IsPotentialDoor( cell ) )
+        {
+            _map.SetCellProperties( cell.X, cell.Y, false, true );
+            _map.Doors.Add( new Door {
+                X = cell.X,
+                Y = cell.Y,
+                IsOpen = false
+            } );
+        }
+        }
+    }
+
+    private bool IsPotentialDoor(RogueSharp.Cell cell )
+    {
+        if ( !cell.IsWalkable )
+        {
+        return false;
+        }
+
+        RogueSharp.Cell right = _map.GetCell( cell.X + 1, cell.Y );
+        RogueSharp.Cell left = _map.GetCell( cell.X - 1, cell.Y );
+        RogueSharp.Cell top = _map.GetCell( cell.X, cell.Y - 1 );
+        RogueSharp.Cell bottom = _map.GetCell( cell.X, cell.Y + 1 );
+
+        if ( _map.GetDoor( cell.X, cell.Y ) != null ||
+            _map.GetDoor( right.X, right.Y ) != null ||
+            _map.GetDoor( left.X, left.Y ) != null ||
+            _map.GetDoor( top.X, top.Y ) != null ||
+            _map.GetDoor( bottom.X, bottom.Y ) != null )
+        {
+        return false;
+        }
+
+        if ( right.IsWalkable && left.IsWalkable && !top.IsWalkable && !bottom.IsWalkable )
+        {
+        return true;
+        }
+        if ( !right.IsWalkable && !left.IsWalkable && top.IsWalkable && bottom.IsWalkable )
+        {
+        return true;
+        }
+        return false;
+    }
+
+    private void CreateStairs()
+    {
+        _map.StairsUp = new Stairs {
+        X = _map.Rooms.First().Center.X + 1,
+        Y = _map.Rooms.First().Center.Y,
+        IsUp = true
+        };
+        _map.StairsDown = new Stairs {
+        X = _map.Rooms.Last().Center.X,
+        Y = _map.Rooms.Last().Center.Y,
+        IsUp = false
+        };
+    }
+
+    private void PlaceMonsters()
+    {
+        foreach ( var room in _map.Rooms )
+        {
+        if ( Dice.Roll( "1D10" ) < 7 )
+        {
+            var numberOfMonsters = Dice.Roll( "1D4" );
+            for ( int i = 0; i < numberOfMonsters; i++ )
             {
-                _map.SetCellProperties(x, y, true, true, true);
+                if ( _map.DoesRoomHaveWalkableSpace( room ) )
+                {
+                    Point randomRoomLocation = _map.GetRandomLocationInRoom( room );
+                    if ( randomRoomLocation != null )
+                    {
+                    _map.AddMonster( ActorGenerator.CreateMonster( _level, _map.GetRandomLocationInRoom( room ) ) );
+                    }
+                }
             }
+        }
+        }
+    }
+
+    private void PlaceEquipment()
+    {
+        foreach ( var room in _map.Rooms )
+        {
+        if ( Dice.Roll( "1D10" ) < 3 )
+        {
+            if ( _map.DoesRoomHaveWalkableSpace( room ) )
+            {
+                Point randomRoomLocation = _map.GetRandomLocationInRoom( room );
+                if ( randomRoomLocation != null )
+                {
+                    Equipment equipment;
+                    try
+                    {
+                    equipment = _equipmentGenerator.CreateEquipment();
+                    }
+                    catch ( InvalidOperationException )
+                    {
+                    // no more equipment to generate so just quit adding to this level
+                    return;
+                    }
+                    Point location = _map.GetRandomLocationInRoom( room );
+                    _map.AddTreasure( location.X, location.Y, equipment );
+                }
+            }
+        }
+        }
+    }
+
+    private void PlaceItems()
+    {
+        foreach ( var room in _map.Rooms )
+        {
+        if ( Dice.Roll( "1D10" ) < 3 )
+        {
+            if ( _map.DoesRoomHaveWalkableSpace( room ) )
+            {
+                Point randomRoomLocation = _map.GetRandomLocationInRoom( room );
+                if ( randomRoomLocation != null )
+                {
+                    Item item = ItemGenerator.CreateItem();
+                    Point location = _map.GetRandomLocationInRoom( room );
+                    _map.AddTreasure( location.X, location.Y, item );
+                }
+            }
+        }
         }
     }
 
     private void PlacePlayer()
     {
-        Player player = Game.Player;
-        if (player == null)
-        {
-            player = new Player();
-        }
+        Player player = ActorGenerator.CreatePlayer();
 
         player.X = _map.Rooms[0].Center.X;
         player.Y = _map.Rooms[0].Center.Y;
 
-        _map.AddPlayer(player);
+        _map.AddPlayer( player );
     }
 
-    private void PlaceMonsters()
+    private void PlaceAbility()
     {
-        foreach (var room in _map.Rooms)
+        if ( _level == 1 || _level % 3 == 0 )
         {
-            // Each room has a 60% chance of having monsters
-            if (Dice.Roll("1D10") < 7)
+        try
+        {
+            var ability = AbilityGenerator.CreateAbility();
+            int roomIndex = Game.Random.Next( 0, _map.Rooms.Count - 1 );
+            Point location = _map.GetRandomLocationInRoom( _map.Rooms[roomIndex] );
+            _map.AddTreasure( location.X, location.Y, ability );
+        }
+        catch ( InvalidOperationException )
+        {
+        }
+        }
+    }
+
+    private void Clean()
+    {
+        for (int x = 0; x < _width; x++)
+        {
+            for (int y = 0; y < _height; y++)
             {
-                // Generate between 1 and 4 monsters
-                var numberOfMonsters = Dice.Roll("1D4");
-                for (int i = 0; i < numberOfMonsters; i++)
-                {
-                    // Find a random walkable location in the room to place the monster
-                    Point randomRoomLocation = _map.GetRandomWalkableLocationInRoom(room);
-                    // It's possible that the room doesn't have space to place a monster
-                    // In that case skip creating the monster
-                    if (randomRoomLocation != null)
-                    {
-                        // Temporarily hard code this monster to be created at level 1
-                        var monster = Kobold.Create(1);
-                        monster.X = randomRoomLocation.X;
-                        monster.Y = randomRoomLocation.Y;
-                        _map.AddMonster(monster);
-                    }
-                }
+                Display.CellAt(0, x, y).SetContent(" ", Color.black, Color.black);
             }
         }
     }
-
-    private void CreateHorizontalTunnel(int xStart, int xEnd, int yPosition)
-    {
-        for (int x = Math.Min(xStart, xEnd); x <= Math.Max(xStart, xEnd); x++)
-        {
-            _map.SetCellProperties(x, yPosition, true, true);
-        }
-    }
-
-    private void CreateVerticalTunnel(int yStart, int yEnd, int xPosition)
-    {
-        for (int y = Math.Min(yStart, yEnd); y <= Math.Max(yStart, yEnd); y++)
-        {
-            _map.SetCellProperties(xPosition, y, true, true);
-        }
-    }
-
-
 }
-
