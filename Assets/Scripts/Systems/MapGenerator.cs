@@ -97,14 +97,14 @@ public class MapGenerator
         return _map;
     }
 
-    private void CreateMap( Rectangle room )
+    private void CreateMap(Rectangle room)
     {
-        for ( int x = room.Left + 1; x < room.Right; x++ )
+        for (int x = room.Left + 1; x < room.Right; x++)
         {
-        for ( int y = room.Top + 1; y < room.Bottom; y++ )
-        {
-            _map.SetCellProperties( x, y, true, true );
-        }
+            for (int y = room.Top + 1; y < room.Bottom; y++)
+            {
+                _map.SetCellProperties(x, y, true, true);
+            }
         }
     }
 
